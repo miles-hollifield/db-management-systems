@@ -1,5 +1,5 @@
--- CSC440 Project 1: Inventory Management for Prepared/Frozen Meals Manufacturer
--- Updated SQL DDL Schema for MariaDB/MySQL
+-- CSC440 Project: Inventory Management for Prepared/Frozen Meals Manufacturer
+-- SQL DDL Schema
 
 -- User Management System
 

@@ -1,30 +1,9 @@
--- CSC440 Project 1: Updated Initial Validation Queries (Q1-Q6)
+-- CSC440 Project: Initial Validation Queries (Q1-Q6)
 -- These queries validate the updated database model with supplier-owned ingredients
 
 -- Q1: Ingredient Suppliers & Prices
--- For a given ingredient, list all suppliers, current active formulation version, 
--- unit price, and pack size.
-
-SELECT 
-    i.ingredient_id,
-    i.name AS ingredient_name,
-    s.supplier_id,
-    s.name AS supplier_name,
-    f.formulation_id,
-    f.pack_size,
-    f.unit_price,
-    f.effective_start_date,
-    f.effective_end_date
-FROM INGREDIENT i
-JOIN SUPPLIER s ON i.supplier_id = s.supplier_id
-JOIN FORMULATION f ON i.ingredient_id = f.ingredient_id
-WHERE i.ingredient_id = ? -- Parameter: specific ingredient ID
-  AND (f.effective_end_date IS NULL OR f.effective_end_date >= CURRENT_DATE)
-  AND f.effective_start_date <= CURRENT_DATE
-ORDER BY s.name, f.effective_start_date DESC;
-
--- Alternative Q1: For a given ingredient NAME, show all supplier versions
--- (Since same ingredient names can exist across suppliers)
+-- For a given ingredient name, show all supplier versions with current active formulation,
+-- unit price, and pack size. (Case-insensitive search)
 
 SELECT 
     i.ingredient_id,
@@ -182,71 +161,4 @@ JOIN SUPPLIER s ON i.supplier_id = s.supplier_id
 WHERE pb.lot_number = ? -- Parameter: specific product batch lot number
 ORDER BY bc.quantity_consumed DESC;
 
--- Additional Validation Queries for Model Integrity
-
--- Q7: User Role Validation
--- Verify user-role mappings are consistent
-
-SELECT 
-    u.user_id,
-    u.username,
-    u.role,
-    CASE u.role
-        WHEN 'MANUFACTURER' THEN m.name
-        WHEN 'SUPPLIER' THEN s.name
-        WHEN 'VIEWER' THEN 'N/A'
-    END AS entity_name,
-    CASE 
-        WHEN u.role = 'MANUFACTURER' AND m.manufacturer_id IS NULL THEN 'MISSING MANUFACTURER RECORD'
-        WHEN u.role = 'SUPPLIER' AND s.supplier_id IS NULL THEN 'MISSING SUPPLIER RECORD'
-        WHEN u.role = 'VIEWER' AND (m.manufacturer_id IS NOT NULL OR s.supplier_id IS NOT NULL) THEN 'VIEWER WITH ENTITY'
-        ELSE 'OK'
-    END AS validation_status
-FROM USER u
-LEFT JOIN MANUFACTURER m ON u.user_id = m.user_id
-LEFT JOIN SUPPLIER s ON u.user_id = s.user_id
-ORDER BY u.role, u.username;
-
--- Q8: Verify no overlapping formulation periods for same ingredient
-SELECT 
-    f1.ingredient_id,
-    i.name AS ingredient_name,
-    s.name AS supplier_name,
-    f1.formulation_id AS formulation_1,
-    f2.formulation_id AS formulation_2,
-    f1.effective_start_date AS start_1,
-    f1.effective_end_date AS end_1,
-    f2.effective_start_date AS start_2,
-    f2.effective_end_date AS end_2
-FROM FORMULATION f1
-JOIN FORMULATION f2 ON f1.ingredient_id = f2.ingredient_id
-    AND f1.formulation_id != f2.formulation_id
-JOIN INGREDIENT i ON f1.ingredient_id = i.ingredient_id
-JOIN SUPPLIER s ON i.supplier_id = s.supplier_id
-WHERE (f1.effective_start_date <= COALESCE(f2.effective_end_date, '9999-12-31')
-       AND COALESCE(f1.effective_end_date, '9999-12-31') >= f2.effective_start_date);
-
--- Q9: Verify lot number format compliance
-SELECT 
-    'INGREDIENT' AS batch_type,
-    lot_number,
-    ingredient_id,
-    batch_id,
-    CASE 
-        WHEN lot_number REGEXP CONCAT('^', ingredient_id, '-[0-9]+-', batch_id, '$') THEN 'VALID'
-        ELSE 'INVALID FORMAT'
-    END AS format_status
-FROM INGREDIENT_BATCH
-WHERE lot_number NOT REGEXP CONCAT('^', ingredient_id, '-[0-9]+-', batch_id, '$')
-UNION ALL
-SELECT 
-    'PRODUCT' AS batch_type,
-    lot_number,
-    product_id,
-    batch_id,
-    CASE 
-        WHEN lot_number REGEXP CONCAT('^', product_id, '-[0-9]+-', batch_id, '$') THEN 'VALID'
-        ELSE 'INVALID FORMAT'
-    END AS format_status
-FROM PRODUCT_BATCH
-WHERE lot_number NOT REGEXP CONCAT('^', product_id, '-[0-9]+-', batch_id, '$');
+-- End of validation queries

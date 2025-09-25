@@ -137,3 +137,47 @@ BATCH_CONSUMPTION -- Traceability: which ingredient lots went into which product
 - **PRODUCT_BATCH** ↔ **INGREDIENT_BATCH** (many:many via BATCH_CONSUMPTION, traceability)
 
 This structure properly handles supplier-owned ingredient definitions, user authentication, and complete traceability as specified in the requirements.
+
+# CSC440 Project - Short Report: Modeling Choices and Query Reasoning
+
+## Key Modeling Decisions
+
+**User System**: Implemented separate USER entity with role field linking to MANUFACTURER/SUPPLIER entities. This supports the "Login → Select role" flow in Appendix A while enforcing the "one role per user" constraint.
+
+**Supplier-Owned Ingredients**: INGREDIENT entity includes supplier_id as owner because suppliers "Define/Update Ingredient" per functional requirements. Same ingredient names can exist across different suppliers as distinct entities.
+
+**Versioned Formulations**: Separate FORMULATION entity handles pricing and effective dates while keeping core ingredient definition stable. Supports "versioned formulations" with "non-overlapping effective periods."
+
+**Recipe Versioning**: Used explicit version numbers with is_active flag rather than date-based selection because requirements state "the plan used in production is selected explicitly."
+
+**Lot Number Format**: VARCHAR primary keys with format "ingredientId-supplierId-batchId" enforced by triggers for required traceability.
+
+**Batch Consumption**: Bridge entity BATCH_CONSUMPTION captures "exactly which ingredient lots were consumed" for complete supply chain traceability.
+
+## Query Design Reasoning
+
+**Q1**: Search by ingredient name (case-insensitive) since users likely search "Seasoning Blend" rather than knowing ingredient IDs. Shows all supplier versions with active formulations.
+
+**Q2**: Filters for quantity > 0 and groups by ingredient/supplier for actionable expiry reporting.
+
+**Q3**: Includes manufacturer/supplier names for ownership clarity and aggregates ingredient availability across all batches.
+
+**Q4**: Compares total production to standard batch size for "nearly-out-of-stock" determination as defined in requirements.
+
+**Q5**: Includes nesting violation detection via EXISTS subquery to validate the one-level composition constraint.
+
+**Q6**: Calculates ingredient cost contribution (quantity × unit cost) for complete production cost traceability.
+
+## Constraints Not Captured in E-R Notation
+
+**One-Level Composition**: Materials in compound ingredients cannot themselves have materials (no grandchildren in hierarchy).
+
+**Lot Number Format**: INGREDIENT_BATCH follows "ingredientId-supplierId-batchId"; PRODUCT_BATCH follows "productId-manufacturerId-batchId".
+
+**Non-Overlapping Formulations**: Same ingredient cannot have overlapping effective date ranges.
+
+**90-Day Expiration Rule**: Ingredient expiration must be ≥ received_date + 90 days.
+
+**Role-Entity Mapping**: Users with role='MANUFACTURER' must have MANUFACTURER record; users with role='SUPPLIER' must have SUPPLIER record.
+
+**Active Recipe Constraint**: Only one recipe plan per product can have is_active = TRUE.
