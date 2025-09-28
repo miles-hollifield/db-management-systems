@@ -171,5 +171,5 @@ CREATE INDEX idx_ingredient_batch_expiration ON INGREDIENT_BATCH(expiration_date
 CREATE INDEX idx_product_batch_manufacturer ON PRODUCT_BATCH(manufacturer_id);
 CREATE INDEX idx_product_batch_product ON PRODUCT_BATCH(product_id);
 
--- Sample data for categories (as specified in requirements)
+-- Sample data for categories
 INSERT INTO CATEGORY (name) VALUES ('Dinners'), ('Sides'), ('Desserts');
