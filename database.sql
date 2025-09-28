@@ -1,6 +1,11 @@
 -- CSC440 Project: Inventory Management for Prepared/Frozen Meals Manufacturer
 -- SQL DDL Schema
 
+-- Team Members:
+-- Miles Hollifield (mfhollif)
+-- Claire Jeffries (cmjeffri)
+-- Abhi Pai (apai5)
+
 -- User Management System
 
 CREATE TABLE USER (
