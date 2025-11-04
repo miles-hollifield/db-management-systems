@@ -1,5 +1,10 @@
 # CSC440 Project 1 - Complete Final Entity Structure
 
+## Team Members
+ * Miles Hollifield (mfhollif)
+ *  Claire Jeffries (cmjeffri)
+ *  Abhi Pai (apai5)
+
 ## User Management System
 
 ```
