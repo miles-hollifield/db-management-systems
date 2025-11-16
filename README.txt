@@ -1,89 +1,102 @@
-# CSC440 Project - Inventory Management System
+================================================================================
+CSC440 Project - Inventory Management System
+Prepared/Frozen Meals Manufacturer Database Application
+================================================================================
 
-**Prepared/Frozen Meals Manufacturer Database Application**
-
-## Team Members
+Team Members:
 - Miles Hollifield (mfhollif)
 - Claire Jeffries (cmjeffri)
 
----
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. Project Overview
+2. Improvements from Deliverable 1
+3. Entity Structure
+4. Key Design Decisions
+5. Implementation Details
+6. Business Rules & Constraints
+7. Installation & Usage
 
-## Table of Contents
-1. [Project Overview](#project-overview)
-2. [Improvements from Deliverable 1](#improvements-from-deliverable-1)
-3. [Entity Structure](#entity-structure)
-4. [Key Design Decisions](#key-design-decisions)
-5. [Implementation Details](#implementation-details)
-6. [Business Rules & Constraints](#business-rules--constraints)
-7. [Installation & Usage](#installation--usage)
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
 
----
+This project implements a comprehensive inventory management system for a 
+prepared/frozen meals manufacturer. The system tracks:
 
-## Project Overview
+- Products (Steak Dinners, Mac & Cheese, Desserts)
+- Ingredients (Atomic and Compound with one-level nesting)
+- Suppliers (who define and provide ingredients)
+- Manufacturers (who create products and manage production)
+- Complete Traceability (from ingredient lots to finished product batches)
+- Recipe Versioning (with explicit activation)
+- Cost Tracking (per-batch and per-unit calculations)
 
-This project implements a comprehensive inventory management system for a prepared/frozen meals manufacturer. The system tracks:
-- **Products** (Steak Dinners, Mac & Cheese, Desserts)
-- **Ingredients** (Atomic and Compound with one-level nesting)
-- **Suppliers** (who define and provide ingredients)
-- **Manufacturers** (who create products and manage production)
-- **Complete Traceability** (from ingredient lots to finished product batches)
-- **Recipe Versioning** (with explicit activation)
-- **Cost Tracking** (per-batch and per-unit calculations)
-
-**Technology Stack:**
+Technology Stack:
 - Database: MySQL/MariaDB 8.0+
 - Application: Python 3.8+ with mysql-connector-python
 - Interface: Command-line menu-driven application
 
----
+================================================================================
+2. IMPROVEMENTS FROM DELIVERABLE 1
+================================================================================
 
-## Improvements from Deliverable 1
+SCHEMA CHANGES
+---------------
 
-### Schema Changes
+1. Manufacturer ID Data Type Update
+   Before: manufacturer_id INT AUTO_INCREMENT
+   After: manufacturer_id VARCHAR(20)
+   Reason: Matches provided sample data format (MFG001, MFG002) and improves 
+           lot number readability
 
-**1. Manufacturer ID Data Type Update**
-- **Before**: manufacturer_id INT AUTO_INCREMENT
-- **After**: manufacturer_id VARCHAR(20)
-- **Reason**: Matches provided sample data format (MFG001, MFG002) and improves lot number readability
+2. Ingredient Batch Enhancement
+   Added: supplier_id INT NOT NULL (user must provide explicitly)
+   Added: manufacturer_id VARCHAR(20) NULL (distinguishes supplier-created vs 
+          manufacturer-received batches)
+   Added: on_hand_oz DECIMAL(10,3) (maintains current inventory automatically 
+          via triggers)
+   Reason: Supports dual-role batch creation and automated inventory tracking
 
-**2. Ingredient Batch Enhancement**
-- **Added**: supplier_id INT NOT NULL (user must provide explicitly)
-- **Added**: manufacturer_id VARCHAR(20) NULL (distinguishes supplier-created vs manufacturer-received batches)
-- **Added**: on_hand_oz DECIMAL(10,3) (maintains current inventory automatically via triggers)
-- **Reason**: Supports dual-role batch creation and automated inventory tracking
+3. 90-Day Rule Refinement
+   Before: CHECK constraint in database on INGREDIENT_BATCH
+   After: Enforced in application code for manufacturers only
+   Reason: Suppliers can create batches without restriction; only manufacturers 
+           must enforce the 90-day rule on intake
 
-**3. 90-Day Rule Refinement**
-- **Before**: CHECK constraint in database on INGREDIENT_BATCH
-- **After**: Enforced in application code for manufacturers only
-- **Reason**: Suppliers can create batches without restriction; only manufacturers must enforce the 90-day rule on intake
+4. Trigger Logic Updates
+   Lot Number Generation: Now accepts user-provided ingredient_id, supplier_id, 
+                         and batch_id before auto-generating lot number
+   On-Hand Initialization: Properly initializes on_hand_oz = quantity on INSERT 
+                          instead of circular update
+   Reason: Fixes implementation issues discovered during testing
 
-**4. Trigger Logic Updates**
-- **Lot Number Generation**: Now accepts user-provided ingredient_id, supplier_id, and batch_id before auto-generating lot number
-- **On-Hand Initialization**: Properly initializes on_hand_oz = quantity on INSERT instead of circular update
-- **Reason**: Fixes implementation issues discovered during testing
+FUNCTIONAL ENHANCEMENTS
+-----------------------
 
-### Functional Enhancements
+1. Viewer Role Workflow Correction
+   Before: General → Product → Ingredient List
+   After: General → Product → Product Batch → Ingredient List
+   Reason: Clarification from project instructions - viewers see ingredients 
+           consumed in specific batches, not just recipes
 
-**1. Viewer Role Workflow Correction**
-- **Before**: General → Product → Ingredient List
-- **After**: General → Product → Product Batch → Ingredient List
-- **Reason**: Clarification from project instructions - viewers see ingredients consumed in specific batches, not just recipes
+2. Date Validation
+   All sample data updated for November 2025 with expiration dates in 2026
+   Prevents trigger rejections during data loading
+   Realistic for current academic term
 
-**2. Date Validation**
-- All sample data updated for November 2025 with expiration dates in 2026
-- Prevents trigger rejections during data loading
-- Realistic for current academic term
+3. Password Authentication
+   Simplified username-only authentication (matches project requirements)
+   No database-level privileges needed
+   Focus on database design and business logic
 
-**3. Password Authentication**
-- Simplified username-only authentication (matches project requirements)
-- No database-level privileges needed
-- Focus on database design and business logic
+================================================================================
+3. ENTITY STRUCTURE
+================================================================================
 
----
-
-## Entity Structure
-
-### User Management System
+USER MANAGEMENT SYSTEM
+----------------------
 
 USER
 - user_id (PK, INT, AUTO_INCREMENT)
@@ -93,35 +106,37 @@ USER
 - created_date (DATE, NOT NULL, DEFAULT CURRENT_DATE)
 
 MANUFACTURER
-- manufacturer_id (VARCHAR(20), PK)  -- Changed from INT
+- manufacturer_id (VARCHAR(20), PK)
 - user_id (FK → USER, NOT NULL, UNIQUE)
 - name (VARCHAR(255), NOT NULL)
 
-SUPPLIER  
+SUPPLIER
 - supplier_id (INT, PK, AUTO_INCREMENT)
 - user_id (FK → USER, NOT NULL, UNIQUE)
 - name (VARCHAR(255), NOT NULL)
 
-### Core Domain Entities
+CORE DOMAIN ENTITIES
+--------------------
 
 CATEGORY
-- category_id (PK, INT, AUTO_INCREMENT) 
+- category_id (PK, INT, AUTO_INCREMENT)
 - name (VARCHAR(100), NOT NULL, UNIQUE)
 
 PRODUCT
 - product_id (PK, INT, AUTO_INCREMENT)
 - name (VARCHAR(255), NOT NULL)
 - category_id (FK → CATEGORY, NOT NULL)
-- manufacturer_id (FK → MANUFACTURER, NOT NULL, VARCHAR(20))  -- Updated
+- manufacturer_id (FK → MANUFACTURER, NOT NULL, VARCHAR(20))
 - standard_batch_size (INT, NOT NULL)
 
-INGREDIENT -- Supplier-owned ingredient definitions
+INGREDIENT (Supplier-owned ingredient definitions)
 - ingredient_id (PK, INT, AUTO_INCREMENT)
 - supplier_id (FK → SUPPLIER, NOT NULL)
 - name (VARCHAR(255), NOT NULL)
 - type (ENUM('ATOMIC', 'COMPOUND'), NOT NULL)
 
-### Recipe Management (Versioned)
+RECIPE MANAGEMENT (Versioned)
+-----------------------------
 
 RECIPE_PLAN
 - plan_id (PK, INT, AUTO_INCREMENT)
@@ -129,15 +144,16 @@ RECIPE_PLAN
 - version_number (INT, NOT NULL)
 - created_date (DATE, NOT NULL, DEFAULT CURRENT_DATE)
 - is_active (BOOLEAN, NOT NULL, DEFAULT FALSE)
--- UNIQUE(product_id, version_number)
+- UNIQUE(product_id, version_number)
 
-RECIPE_INGREDIENT  
+RECIPE_INGREDIENT
 - plan_id (PK, FK → RECIPE_PLAN)
 - ingredient_id (PK, FK → INGREDIENT)
 - quantity_required (DECIMAL(10,3), NOT NULL)
--- Composite PK: (plan_id, ingredient_id)
+- Composite PK: (plan_id, ingredient_id)
 
-### Supplier Formulations
+SUPPLIER FORMULATIONS
+---------------------
 
 FORMULATION
 - formulation_id (PK, INT, AUTO_INCREMENT)
@@ -146,32 +162,33 @@ FORMULATION
 - unit_price (DECIMAL(10,2), NOT NULL)
 - effective_start_date (DATE, NOT NULL)
 - effective_end_date (DATE, NULL)
--- UNIQUE(ingredient_id, effective_start_date)
+- UNIQUE(ingredient_id, effective_start_date)
 
 FORMULATION_MATERIAL
 - formulation_id (PK, FK → FORMULATION)
 - material_ingredient_id (PK, FK → INGREDIENT)
 - quantity_required (DECIMAL(10,3), NOT NULL)
--- Composite PK: (formulation_id, material_ingredient_id)
+- Composite PK: (formulation_id, material_ingredient_id)
 
-### Batch/Lot Tracking
+BATCH/LOT TRACKING
+------------------
 
 INGREDIENT_BATCH
-- lot_number (PK, VARCHAR(50))  -- Format: ingredientId-supplierId-batchId
+- lot_number (PK, VARCHAR(50))  [Format: ingredientId-supplierId-batchId]
 - ingredient_id (FK → INGREDIENT, NOT NULL)
-- supplier_id (INT, NOT NULL)  -- New: user must provide
-- manufacturer_id (VARCHAR(20), NULL)  -- New: NULL for supplier-created batches
+- supplier_id (INT, NOT NULL)
+- manufacturer_id (VARCHAR(20), NULL)
 - batch_id (VARCHAR(20), NOT NULL)
 - quantity (DECIMAL(10,3), NOT NULL)
 - cost_per_unit (DECIMAL(10,2), NOT NULL)
 - expiration_date (DATE, NOT NULL)
 - received_date (DATE, NOT NULL, DEFAULT CURRENT_DATE)
-- on_hand_oz (DECIMAL(10,3), DEFAULT 0)  -- New: auto-maintained by triggers
+- on_hand_oz (DECIMAL(10,3), DEFAULT 0)
 
 PRODUCT_BATCH
-- lot_number (PK, VARCHAR(50))  -- Format: productId-manufacturerId-batchId
+- lot_number (PK, VARCHAR(50))  [Format: productId-manufacturerId-batchId]
 - product_id (FK → PRODUCT, NOT NULL)
-- manufacturer_id (FK → MANUFACTURER, NOT NULL, VARCHAR(20))  -- Updated
+- manufacturer_id (FK → MANUFACTURER, NOT NULL, VARCHAR(20))
 - plan_id (FK → RECIPE_PLAN, NOT NULL)
 - batch_id (VARCHAR(20), NOT NULL)
 - quantity_produced (INT, NOT NULL)
@@ -183,127 +200,145 @@ BATCH_CONSUMPTION
 - product_batch_lot (PK, FK → PRODUCT_BATCH.lot_number)
 - ingredient_batch_lot (PK, FK → INGREDIENT_BATCH.lot_number)
 - quantity_consumed (DECIMAL(10,3), NOT NULL)
--- Composite PK: (product_batch_lot, ingredient_batch_lot)
+- Composite PK: (product_batch_lot, ingredient_batch_lot)
 
----
+================================================================================
+4. KEY DESIGN DECISIONS
+================================================================================
 
-## Key Design Decisions
+1. User Authentication System
+   Decision: Separate USER entity with role-based mapping to 
+             MANUFACTURER/SUPPLIER entities.
+   Reasoning: Supports the "Login → Select role" flow while enforcing "one 
+              role per user" constraint. VIEWER role requires no additional 
+              entity (read-only access).
 
-### 1. User Authentication System
-**Decision**: Separate USER entity with role-based mapping to MANUFACTURER/SUPPLIER entities.
+2. Supplier Ownership of Ingredients
+   Decision: INGREDIENT entity includes supplier_id as owner.
+   Reasoning: Suppliers "Define/Update Ingredient" per functional requirements. 
+              Multiple suppliers can create ingredients with the same name as 
+              distinct entities.
+   Impact: Enables business scenario where "Supplier A's Seasoning Blend" and 
+           "Supplier B's Seasoning Blend" are completely different ingredients.
 
-**Reasoning**: Supports the "Login → Select role" flow while enforcing "one role per user" constraint. VIEWER role requires no additional entity (read-only access).
+3. Formulation as Pricing/Versioning Layer
+   Decision: Separate FORMULATION entity for pricing and temporal validity.
+   Reasoning: Suppliers version pricing/packaging over time while maintaining 
+              core ingredient definition. Supports non-overlapping effective 
+              periods.
 
-### 2. Supplier Ownership of Ingredients
-**Decision**: INGREDIENT entity includes supplier_id as owner.
+4. Recipe Plan Versioning
+   Decision: Explicit versioning with is_active flag.
+   Reasoning: Requirements state "the plan used in production is selected 
+              explicitly" - manufacturers manually choose which version to use.
 
-**Reasoning**: Suppliers "Define/Update Ingredient" per functional requirements. Multiple suppliers can create ingredients with the same name as distinct entities.
+5. Lot Number Strategy
+   Decision: VARCHAR primary keys with trigger-enforced format.
+   Reasoning: Maintains required traceability format while allowing flexible 
+              batch identifiers. Prioritizes readability and audit trail over 
+              query performance.
 
-**Impact**: Enables business scenario where "Supplier A's Seasoning Blend" and "Supplier B's Seasoning Blend" are completely different ingredients.
+6. Dual-Role Batch Creation
+   Decision: Both suppliers and manufacturers can create ingredient batches.
+   Reasoning: Clarification from project instructions - suppliers create 
+              batches (manufacturer_id = NULL), manufacturers receive/intake 
+              batches (manufacturer_id set).
 
-### 3. Formulation as Pricing/Versioning Layer
-**Decision**: Separate FORMULATION entity for pricing and temporal validity.
+================================================================================
+5. IMPLEMENTATION DETAILS
+================================================================================
 
-**Reasoning**: Suppliers version pricing/packaging over time while maintaining core ingredient definition. Supports non-overlapping effective periods.
+DATABASE FEATURES
+-----------------
 
-### 4. Recipe Plan Versioning
-**Decision**: Explicit versioning with is_active flag.
-
-**Reasoning**: Requirements state "the plan used in production is selected explicitly" - manufacturers manually choose which version to use.
-
-### 5. Lot Number Strategy
-**Decision**: VARCHAR primary keys with trigger-enforced format.
-
-**Reasoning**: Maintains required traceability format while allowing flexible batch identifiers. Prioritizes readability and audit trail over query performance.
-
-### 6. Dual-Role Batch Creation
-**Decision**: Both suppliers and manufacturers can create ingredient batches.
-
-**Reasoning**: Clarification from project instructions - suppliers create batches (manufacturer_id = NULL), manufacturers receive/intake batches (manufacturer_id set).
-
----
-
-## Implementation Details
-
-### Database Features
-
-**Triggers (4 total):**
+Triggers (4 total):
 1. trg_compute_ingredient_lot_number - Auto-generates lot numbers on INSERT
 2. trg_initialize_on_hand - Sets on_hand_oz = quantity on new batches
 3. trg_prevent_expired_consumption - Blocks consumption of expired lots
 4. trg_decrement_on_hand - Automatically updates inventory on consumption
 
-**Stored Procedures (1 total):**
-1. RecordProductionBatch - Creates product batch, consumes ingredient lots, calculates costs
+Stored Procedures (1 total):
+1. RecordProductionBatch - Creates product batch, consumes ingredient lots, 
+                           calculates costs
 
-**Views (2 total):**
+Views (2 total):
 1. vw_active_formulations - Current supplier formulations
-2. vw_flattened_product_bom - Product recipes with ingredients sorted by quantity
+2. vw_flattened_product_bom - Product recipes with ingredients sorted by 
+                               quantity
 
-**Required Queries (5 total):**
+Required Queries (5 total):
 1. List all products and their categories
 2. Last batch ingredients for Steak Dinner (100) by MFG001
 3. Suppliers and total spent for MFG002
 4. Manufacturers NOT supplied by Supplier B (21)
 5. Unit cost for product lot 100-MFG001-B0901
 
-### Application Features
+APPLICATION FEATURES
+--------------------
 
-**Role-Based Menus:**
-- **Manufacturer**: Create products, recipes, batches; receive ingredients; run reports
-- **Supplier**: Define ingredients, create formulations, create batches
-- **Viewer**: Browse products, generate ingredient lists (Product → Batch → Ingredients)
+Role-Based Menus:
+- Manufacturer: Create products, recipes, batches; receive ingredients; 
+                run reports
+- Supplier: Define ingredients, create formulations, create batches
+- Viewer: Browse products, generate ingredient lists 
+          (Product → Batch → Ingredients)
 
-**Reports (Manufacturer only):**
+Reports (Manufacturer only):
 - On-hand inventory by lot
 - Nearly-out-of-stock products
 - Almost-expired ingredient lots (within 10 days)
 - Batch cost summary
 
-**Validation:**
+Validation:
 - 90-day expiration rule (manufacturer intake only)
 - Batch size multiples for production
 - Sufficient ingredient quantities before production
 - Non-negative inventory balances
 - Lot number format compliance
 
----
+================================================================================
+6. BUSINESS RULES & CONSTRAINTS
+================================================================================
 
-## Business Rules & Constraints
-
-### Database-Enforced Constraints
+DATABASE-ENFORCED CONSTRAINTS
+------------------------------
 - Foreign key integrity with appropriate CASCADE/RESTRICT
 - CHECK constraints for positive values
 - UNIQUE constraints for lot numbers and version combinations
 - Triggers for lot number format and inventory management
 
-### Application-Enforced Constraints
+APPLICATION-ENFORCED CONSTRAINTS
+---------------------------------
 - One-level composition for compound ingredients
 - Single active recipe per product
 - 90-day minimum expiration (manufacturer level)
 - Batch size multiple validation
 - Role-based access control
 
-### Business Logic
+BUSINESS LOGIC
+--------------
 - Suppliers own ingredient definitions
 - Manufacturers own products
 - Complete lot traceability from ingredients to finished goods
 - Cost calculation from actual consumed lots
 - Formulation versioning with date-based validity
 
----
+================================================================================
+7. INSTALLATION & USAGE
+================================================================================
 
-## Installation & Usage
-
-### Prerequisites
-# Required software
+PREREQUISITES
+-------------
+Required software:
 - Python 3.8+
 - MySQL/MariaDB 8.0+
 - pip (Python package manager)
 
-### Installation Steps
+INSTALLATION STEPS
+------------------
 
-1. **Clone/Download Project Files**
+1. Clone/Download Project Files
+   Required files:
    - schema.sql
    - data.sql
    - main.py
@@ -314,60 +349,62 @@ BATCH_CONSUMPTION
    - query_executor.py
    - requirements.txt
 
-2. **Install Python Dependencies**
-   pip install -r requirements.txt
+2. Install Python Dependencies
+   Command: pip install -r requirements.txt
 
-3. **Set Up Database**
+3. Set Up Database
    - Open MySQL Workbench
    - Execute schema.sql (creates all tables, triggers, procedures, views)
    - Execute data.sql (loads sample data)
 
-4. **Configure Connection**
+4. Configure Connection
+   Create .env file in project root with:
    
-   Create .env file in project root:
    DB_HOST=localhost
    DB_PORT=3306
    DB_USER=root
    DB_PASSWORD=your_password_here
    DB_NAME=inventory_db
 
-5. **Run Application**
-   python main.py
+5. Run Application
+   Command: python main.py
 
-### Sample User Accounts
+SAMPLE USER ACCOUNTS
+--------------------
 
-| Role | Username | Manufacturer/Supplier |
-|------|----------|----------------------|
-| Manufacturer | jsmith | Manufacturer 1 (MFG001) |
-| Manufacturer | bpsi | Manufacturer 2 (MFG002) |
-| Supplier | alee | Supplier A (ID: 20) |
-| Supplier | jdoe | Supplier B (ID: 21) |
-| Viewer | bjohnson | N/A (read-only) |
+Role            Username    Manufacturer/Supplier
+------------    --------    ---------------------
+Manufacturer    jsmith      Manufacturer 1 (MFG001)
+Manufacturer    bpsi        Manufacturer 2 (MFG002)
+Supplier        alee        Supplier A (ID: 20)
+Supplier        jdoe        Supplier B (ID: 21)
+Viewer          bjohnson    N/A (read-only)
 
-**Note**: Simplified authentication (username only) per project requirements.
+Note: Simplified authentication (username only) per project requirements.
 
----
+================================================================================
+KEY RELATIONSHIPS SUMMARY
+================================================================================
 
-## Key Relationships Summary
+- USER → MANUFACTURER/SUPPLIER (1:1, role-based)
+- SUPPLIER → INGREDIENT (1:many, ownership)
+- MANUFACTURER → PRODUCT (1:many, ownership)
+- PRODUCT → RECIPE_PLAN (1:many, versioned)
+- INGREDIENT → FORMULATION (1:many, versioned pricing)
+- FORMULATION → FORMULATION_MATERIAL (1:many, compound composition)
+- INGREDIENT → INGREDIENT_BATCH (1:many, physical lots)
+- PRODUCT → PRODUCT_BATCH (1:many, production lots)
+- PRODUCT_BATCH ↔ INGREDIENT_BATCH (many:many via BATCH_CONSUMPTION, 
+  traceability)
 
-- **USER** → **MANUFACTURER/SUPPLIER** (1:1, role-based)
-- **SUPPLIER** → **INGREDIENT** (1:many, ownership)
-- **MANUFACTURER** → **PRODUCT** (1:many, ownership)
-- **PRODUCT** → **RECIPE_PLAN** (1:many, versioned)
-- **INGREDIENT** → **FORMULATION** (1:many, versioned pricing)
-- **FORMULATION** → **FORMULATION_MATERIAL** (1:many, compound composition)
-- **INGREDIENT** → **INGREDIENT_BATCH** (1:many, physical lots)
-- **PRODUCT** → **PRODUCT_BATCH** (1:many, production lots)
-- **PRODUCT_BATCH** ↔ **INGREDIENT_BATCH** (many:many via BATCH_CONSUMPTION, traceability)
-
----
-
-## Contact
+================================================================================
+CONTACT
+================================================================================
 
 For questions or issues:
 - Miles Hollifield: mfhollif@ncsu.edu
 - Claire Jeffries: cmjeffri@ncsu.edu
 
----
+Last Updated: November 2025 for CSC440 Deliverable 2
 
-**Last Updated**: November 2025 for CSC440 Deliverable 2
+================================================================================
