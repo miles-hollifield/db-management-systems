@@ -1,10 +1,9 @@
 -- CSC440 Project: Inventory Management for Prepared/Frozen Meals Manufacturer
--- SQL DDL Schema
+-- SQL DDL Schema - UPDATED with clarifications
 
 -- Team Members:
 -- Miles Hollifield (mfhollif)
 -- Claire Jeffries (cmjeffri)
--- Abhi Pai (apai5)
 
 -- ============================================================
 -- SECTION 1: TABLE CREATION
@@ -22,7 +21,7 @@ CREATE TABLE USER (
 );
 
 CREATE TABLE MANUFACTURER (
-    manufacturer_id INT AUTO_INCREMENT,
+    manufacturer_id VARCHAR(20),
     user_id INT NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL,
     PRIMARY KEY (manufacturer_id),
@@ -49,7 +48,7 @@ CREATE TABLE PRODUCT (
     product_id INT AUTO_INCREMENT,
     name VARCHAR(255) NOT NULL,
     category_id INT NOT NULL,
-    manufacturer_id INT NOT NULL,
+    manufacturer_id VARCHAR(20) NOT NULL,
     standard_batch_size INT NOT NULL,
     PRIMARY KEY (product_id),
     FOREIGN KEY (category_id) REFERENCES CATEGORY(category_id) ON DELETE RESTRICT,
@@ -122,22 +121,26 @@ CREATE TABLE FORMULATION_MATERIAL (
 CREATE TABLE INGREDIENT_BATCH (
     lot_number VARCHAR(50),
     ingredient_id INT NOT NULL,
+    supplier_id INT NOT NULL,
+    manufacturer_id VARCHAR(20) NULL,
     batch_id VARCHAR(20) NOT NULL,
     quantity DECIMAL(10,3) NOT NULL,
     cost_per_unit DECIMAL(10,2) NOT NULL,
     expiration_date DATE NOT NULL,
     received_date DATE NOT NULL DEFAULT (CURRENT_DATE),
+    on_hand_oz DECIMAL(10,3) DEFAULT 0,
     PRIMARY KEY (lot_number),
     FOREIGN KEY (ingredient_id) REFERENCES INGREDIENT(ingredient_id) ON DELETE RESTRICT,
+    FOREIGN KEY (supplier_id) REFERENCES SUPPLIER(supplier_id) ON DELETE RESTRICT,
+    FOREIGN KEY (manufacturer_id) REFERENCES MANUFACTURER(manufacturer_id) ON DELETE RESTRICT,
     CHECK (quantity >= 0),
-    CHECK (cost_per_unit > 0),
-    CHECK (expiration_date >= DATE_ADD(received_date, INTERVAL 90 DAY))
+    CHECK (cost_per_unit > 0)
 );
 
 CREATE TABLE PRODUCT_BATCH (
     lot_number VARCHAR(50),
     product_id INT NOT NULL,
-    manufacturer_id INT NOT NULL,
+    manufacturer_id VARCHAR(20) NOT NULL,
     plan_id INT NOT NULL,
     batch_id VARCHAR(20) NOT NULL,
     quantity_produced INT NOT NULL,
@@ -167,8 +170,6 @@ CREATE TABLE BATCH_CONSUMPTION (
 -- SECTION 2: INDEXES
 -- ============================================================
 
--- Indexes for performance on common queries
-
 CREATE INDEX idx_user_role ON USER(role);
 CREATE INDEX idx_manufacturer_user ON MANUFACTURER(user_id);
 CREATE INDEX idx_supplier_user ON SUPPLIER(user_id);
@@ -180,54 +181,55 @@ CREATE INDEX idx_recipe_plan_active ON RECIPE_PLAN(product_id, is_active);
 CREATE INDEX idx_formulation_ingredient ON FORMULATION(ingredient_id);
 CREATE INDEX idx_formulation_dates ON FORMULATION(effective_start_date, effective_end_date);
 CREATE INDEX idx_ingredient_batch_ingredient ON INGREDIENT_BATCH(ingredient_id);
+CREATE INDEX idx_ingredient_batch_supplier ON INGREDIENT_BATCH(supplier_id);
+CREATE INDEX idx_ingredient_batch_manufacturer ON INGREDIENT_BATCH(manufacturer_id);
 CREATE INDEX idx_ingredient_batch_expiration ON INGREDIENT_BATCH(expiration_date);
 CREATE INDEX idx_product_batch_manufacturer ON PRODUCT_BATCH(manufacturer_id);
 CREATE INDEX idx_product_batch_product ON PRODUCT_BATCH(product_id);
 
--- Sample data for categories
+-- ============================================================
+-- SECTION 3: INITIAL DATA
+-- ============================================================
+
 INSERT INTO CATEGORY (name) VALUES ('Dinners'), ('Sides'), ('Desserts');
 
 -- ============================================================
--- SECTION 3: TRIGGERS
+-- SECTION 4: TRIGGERS
 -- ============================================================
 
--- Add on_hand_oz column (run only once)
--- Used to maintain current inventory levels per ingredient lot
-ALTER TABLE INGREDIENT_BATCH
-ADD COLUMN on_hand_oz DECIMAL(10,3) DEFAULT 0;
-
--- Trigger 1 - Compute ingredient lot number
--- Automatically generates <ingredientId>-<supplierId>-<batchId>
--- and rejects duplicate lot numbers on insert
 DELIMITER $$
 
+-- Trigger 1: Compute ingredient lot number
+-- User provides ingredient_id, supplier_id, batch_id
+-- Trigger generates lot_number and checks for duplicates
 CREATE TRIGGER trg_compute_ingredient_lot_number
 BEFORE INSERT ON INGREDIENT_BATCH
 FOR EACH ROW
 BEGIN
-    DECLARE supplier_id_val INT;
+    DECLARE new_lot VARCHAR(50);
 
-    -- lookup supplier for the ingredient
-    SELECT supplier_id INTO supplier_id_val
-    FROM INGREDIENT
-    WHERE ingredient_id = NEW.ingredient_id;
-
-    -- construct the lot number ( <ingredientId>-<supplierId>-<batchId> )
-    SET NEW.lot_number = CONCAT(NEW.ingredient_id, '-', supplier_id_val, '-', NEW.batch_id);
-
-    -- reject duplicate lot numbers
-    IF EXISTS (SELECT 1 FROM INGREDIENT_BATCH WHERE lot_number = NEW.lot_number) THEN
+    -- Construct lot number: ingredientId-supplierId-batchId
+    SET new_lot = CONCAT(NEW.ingredient_id, '-', NEW.supplier_id, '-', NEW.batch_id);
+    
+    -- Check for duplicate
+    IF EXISTS (SELECT 1 FROM INGREDIENT_BATCH WHERE lot_number = new_lot) THEN
         SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = 'Duplicate lot number detected.';
     END IF;
+    
+    -- Set the lot number
+    SET NEW.lot_number = new_lot;
 END$$
 
-DELIMITER ;
+-- Trigger 2: Initialize on-hand quantity on insert
+CREATE TRIGGER trg_initialize_on_hand
+BEFORE INSERT ON INGREDIENT_BATCH
+FOR EACH ROW
+BEGIN
+    SET NEW.on_hand_oz = NEW.quantity;
+END$$
 
--- Trigger 2 - Prevent expired consumption
--- Rejects attempts to consume expired ingredient lots in production
-DELIMITER $$
-
+-- Trigger 3: Prevent expired consumption
 CREATE TRIGGER trg_prevent_expired_consumption
 BEFORE INSERT ON BATCH_CONSUMPTION
 FOR EACH ROW
@@ -244,28 +246,7 @@ BEGIN
     END IF;
 END$$
 
-DELIMITER ;
-
--- Trigger 3 - Maintain on-hand (add on insert)
--- Updates on_hand_oz when a new ingredient batch is received
-DELIMITER $$
-
-CREATE TRIGGER trg_add_on_hand
-AFTER INSERT ON INGREDIENT_BATCH
-FOR EACH ROW
-BEGIN
-    UPDATE INGREDIENT_BATCH
-    SET on_hand_oz = on_hand_oz + NEW.quantity
-    WHERE lot_number = NEW.lot_number;
-END$$
-
-DELIMITER ;
-
--- Trigger 4 - Maintain on-hand (subtract on consumption)
--- Decrements on_hand_oz when a batch consumes ingredient lots
--- and prevents quantity from going negative
-DELIMITER $$
-
+-- Trigger 4: Decrement on-hand on consumption
 CREATE TRIGGER trg_decrement_on_hand
 BEFORE INSERT ON BATCH_CONSUMPTION
 FOR EACH ROW
@@ -289,7 +270,7 @@ END$$
 DELIMITER ;
 
 -- ============================================================
--- SECTION 4: STORED PROCEDURES
+-- SECTION 5: STORED PROCEDURES
 -- ============================================================
 
 -- Stored Procedure - RecordProductionBatch
@@ -300,10 +281,10 @@ DELIMITER $$
 CREATE PROCEDURE RecordProductionBatch (
     IN in_product_id INT,
     IN in_plan_id INT,
-    IN in_manufacturer_id INT,
+    IN in_manufacturer_id VARCHAR(20),
     IN in_batch_id VARCHAR(20),
     IN in_produced_units INT,
-    IN in_ingredient_list JSON    
+    IN in_ingredient_list JSON
 )
 BEGIN
     DECLARE total_cost DECIMAL(12,2) DEFAULT 0.0;
@@ -312,13 +293,34 @@ BEGIN
     DECLARE ingr_lot VARCHAR(50);
     DECLARE ingr_qty DECIMAL(10,3);
     DECLARE ingr_cost DECIMAL(10,2);
-
-    -- create unique lot number for the product batch
-    SET lot_num = CONCAT(in_product_id, '-', in_manufacturer_id, '-', in_batch_id);
-
-    -- loop thru ingredient list JSON to process each consumption record
+    DECLARE std_batch_size INT;
     DECLARE i INT DEFAULT 0;
     DECLARE n INT;
+
+    SELECT standard_batch_size INTO std_batch_size
+    FROM PRODUCT
+    WHERE product_id = in_product_id;
+
+    IF in_produced_units % std_batch_size != 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Produced units must be a multiple of standard batch size.';
+    END IF;
+
+    SET lot_num = CONCAT(in_product_id, '-', in_manufacturer_id, '-', in_batch_id);
+
+    IF EXISTS (SELECT 1 FROM PRODUCT_BATCH WHERE lot_number = lot_num) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Product batch lot number already exists.';
+    END IF;
+
+    INSERT INTO PRODUCT_BATCH (
+        lot_number, product_id, manufacturer_id, plan_id, batch_id,
+        quantity_produced, total_cost, per_unit_cost, production_date
+    ) VALUES (
+        lot_num, in_product_id, in_manufacturer_id, in_plan_id, in_batch_id,
+        in_produced_units, 0, 0, CURRENT_DATE()
+    );
+
     SET n = JSON_LENGTH(in_ingredient_list);
 
     WHILE i < n DO
@@ -342,22 +344,131 @@ BEGIN
 
     SET per_unit_cost = total_cost / in_produced_units;
 
-    -- insert the product batch record
-    INSERT INTO PRODUCT_BATCH (
-        lot_number, product_id, manufacturer_id, plan_id, batch_id,
-        quantity_produced, total_cost, per_unit_cost, production_date
-    ) VALUES (
-        lot_num, in_product_id, in_manufacturer_id, in_plan_id, in_batch_id,
-        in_produced_units, total_cost, per_unit_cost, CURRENT_DATE()
-    );
+    UPDATE PRODUCT_BATCH
+    SET total_cost = total_cost, per_unit_cost = per_unit_cost
+    WHERE lot_number = lot_num;
 
-    -- return summary
     SELECT 
         lot_num AS product_lot,
         in_product_id AS product_id,
-        total_cost,
-        per_unit_cost,
+        total_cost AS batch_total_cost,
+        per_unit_cost AS unit_cost,
         in_produced_units AS produced_units;
 END$$
 
 DELIMITER ;
+
+-- ============================================================
+-- SECTION 6: VIEWS
+-- ============================================================
+
+CREATE OR REPLACE VIEW vw_active_formulations AS
+SELECT 
+    f.formulation_id,
+    s.supplier_id,
+    s.name AS supplier_name,
+    i.ingredient_id,
+    i.name AS ingredient_name,
+    i.type AS ingredient_type,
+    f.pack_size,
+    f.unit_price,
+    f.effective_start_date,
+    f.effective_end_date
+FROM FORMULATION f
+JOIN INGREDIENT i ON f.ingredient_id = i.ingredient_id
+JOIN SUPPLIER s ON i.supplier_id = s.supplier_id
+WHERE (f.effective_end_date IS NULL OR f.effective_end_date >= CURRENT_DATE)
+  AND f.effective_start_date <= CURRENT_DATE;
+
+CREATE OR REPLACE VIEW vw_flattened_product_bom AS
+SELECT 
+    p.product_id,
+    p.name AS product_name,
+    m.name AS manufacturer_name,
+    rp.plan_id,
+    rp.version_number,
+    i.ingredient_id,
+    i.name AS ingredient_name,
+    s.name AS supplier_name,
+    i.type AS ingredient_type,
+    ri.quantity_required
+FROM PRODUCT p
+JOIN MANUFACTURER m ON p.manufacturer_id = m.manufacturer_id
+JOIN RECIPE_PLAN rp ON p.product_id = rp.product_id
+JOIN RECIPE_INGREDIENT ri ON rp.plan_id = ri.plan_id
+JOIN INGREDIENT i ON ri.ingredient_id = i.ingredient_id
+JOIN SUPPLIER s ON i.supplier_id = s.supplier_id
+WHERE rp.is_active = TRUE
+ORDER BY p.product_id, ri.quantity_required DESC, i.name;
+
+-- ============================================================
+-- SECTION 7: REQUIRED RETRIEVAL QUERIES
+-- ============================================================
+
+-- Query 1: List all products and their categories
+-- SELECT 
+--     p.product_id,
+--     p.name AS product_name,
+--     c.name AS category_name,
+--     m.name AS manufacturer_name
+-- FROM PRODUCT p
+-- JOIN CATEGORY c ON p.category_id = c.category_id
+-- JOIN MANUFACTURER m ON p.manufacturer_id = m.manufacturer_id
+-- ORDER BY c.name, p.name;
+
+-- Query 2: List ingredients and lot numbers of last batch of Steak Dinner (100) by MFG001
+-- SELECT 
+--     pb.lot_number AS product_lot,
+--     pb.production_date,
+--     i.ingredient_id,
+--     i.name AS ingredient_name,
+--     ib.lot_number AS ingredient_lot,
+--     bc.quantity_consumed
+-- FROM PRODUCT_BATCH pb
+-- JOIN BATCH_CONSUMPTION bc ON pb.lot_number = bc.product_batch_lot
+-- JOIN INGREDIENT_BATCH ib ON bc.ingredient_batch_lot = ib.lot_number
+-- JOIN INGREDIENT i ON ib.ingredient_id = i.ingredient_id
+-- WHERE pb.product_id = 100
+--   AND pb.manufacturer_id = 'MFG001'
+-- ORDER BY pb.production_date DESC
+-- LIMIT 1;
+
+-- Query 3: For MFG002, list suppliers and total spent per supplier
+-- SELECT 
+--     s.supplier_id,
+--     s.name AS supplier_name,
+--     SUM(bc.quantity_consumed * ib.cost_per_unit) AS total_spent
+-- FROM PRODUCT_BATCH pb
+-- JOIN BATCH_CONSUMPTION bc ON pb.lot_number = bc.product_batch_lot
+-- JOIN INGREDIENT_BATCH ib ON bc.ingredient_batch_lot = ib.lot_number
+-- JOIN INGREDIENT i ON ib.ingredient_id = i.ingredient_id
+-- JOIN SUPPLIER s ON i.supplier_id = s.supplier_id
+-- WHERE pb.manufacturer_id = 'MFG002'
+-- GROUP BY s.supplier_id, s.name
+-- ORDER BY total_spent DESC;
+
+-- Query 4: Which manufacturers has Supplier B (21) NOT supplied to?
+-- SELECT 
+--     m.manufacturer_id,
+--     m.name AS manufacturer_name
+-- FROM MANUFACTURER m
+-- WHERE m.manufacturer_id NOT IN (
+--     SELECT DISTINCT pb.manufacturer_id
+--     FROM PRODUCT_BATCH pb
+--     JOIN BATCH_CONSUMPTION bc ON pb.lot_number = bc.product_batch_lot
+--     JOIN INGREDIENT_BATCH ib ON bc.ingredient_batch_lot = ib.lot_number
+--     JOIN INGREDIENT i ON ib.ingredient_id = i.ingredient_id
+--     WHERE i.supplier_id = 21
+-- )
+-- ORDER BY m.name;
+
+-- Query 5: Unit cost for product lot 100-MFG001-B0901
+-- SELECT 
+--     pb.lot_number,
+--     p.name AS product_name,
+--     pb.per_unit_cost,
+--     pb.total_cost,
+--     pb.quantity_produced
+-- FROM PRODUCT_BATCH pb
+-- JOIN PRODUCT p ON pb.product_id = p.product_id
+-- WHERE pb.lot_number = '100-MFG001-B0901';
